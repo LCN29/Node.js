@@ -1,9 +1,10 @@
 'use strict';
 import mongoose from 'mongoose';
+import config from '../config/config';
 
-const url= 'mongodb://localhost:27017/WebSite';
 mongoose.Promise= global.Promise;
-mongoose.connection.openUri(url);
+mongoose.connection.openUri(config.url);
+
 
 const db = mongoose.connection;
 

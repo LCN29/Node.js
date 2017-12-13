@@ -4,12 +4,16 @@ import Captchapng from 'captchapng';
 import formidable from 'formidable';
 import crypto from 'crypto';
 
+import UserModel from '../models/UserModel';
+import UserInfoModel from '../models/UserInfoModel';
+
 class UserController {
 
     constructor() {
         this.login = this.login.bind(this);
     }
 
+    //获取验证码
     getVerifyCode(req, res){
 
         const cap = parseInt(Math.random()*9000+1000);
@@ -18,7 +22,7 @@ class UserController {
         p.color(0, 0, 0, 0);    //背景颜色 rgba
         p.color(80, 80, 80, 255);   // 点的颜色
         const base64 = p.getBase64();
-        res.cookie('cap', cap, { maxAge: 300000, httpOnly: true });
+     //   res.cookie('cap', cap, { maxAge: 300000, httpOnly: true });
         res.send({
             status: 1,
             num: cap,
@@ -26,51 +30,27 @@ class UserController {
         });
     }
 
-    login(req, res){
+    //登录
+    async login(req, res){
 
-        console.log('这里');
-        const cap = req.cookies.cap;
+        const { username,password }= req.body;
 
-        if(!cap){
-            console.log('验证码失效')
+        try{
+            if (!username) {
+                throw new Error('用户名参数错误');
+            }else if(!password){
+                throw new Error('密码参数错误');
+            }
+        }catch(err){
             res.send({
                 status: 0,
-                type: 'ERROR_CAPTCHA',
-                message: '验证码失效',
+                type: 'ERROR_QUERY',
+                message: err.message,
             })
             return;
         }
 
-        const form = new formidable.IncomingForm();
-
-        form.parse(req, async (err, fields, files)=> {
-            const {username, password, verifycode} = fields;
-            try{
-                if (!username) {
-                    throw new Error('用户名参数错误');
-                }else if(!password){
-                    throw new Error('密码参数错误');
-                }else if(!verifycode){
-                    throw new Error('验证码参数错误');
-                }
-            }catch(err){
-                console.log('登陆参数错误', err);
-                res.send({
-                    status: 0,
-                    type: 'ERROR_QUERY',
-                    message: err.message,
-                })
-                return;
-            }
-            if (cap.toString() !== verifycode.toString()) {
-                res.send({
-                    status: 0,
-                    type: 'ERROR_CAPTCHA',
-                    message: '验证码不正确',
-                })
-                return;
-            }
-
+        try{
             const newpassword= this.encryption(password);
 
             const user = await UserModel.findOne({username});
@@ -84,17 +64,34 @@ class UserController {
                 return;
             }
 
-            if(user.password.toString() !== newpassword.toString()){
-                console.log('用户登录密码错误');
+            if(user.password !== newpassword){
                 res.send({
                     status: 0,
                     type: 'ERROR_PASSWORD',
-                    message: '密码错误',
+                    message: '密码不正确',
                 });
                 return;
             }
 
-        });
+
+            req.session.user_id = user.user_id;
+            const userInfo = await UserInfoModel.findOne({user_id: user.user_id},"-_id");
+
+            let data= {
+                status: 1,
+                type: 'SUCESS',
+                message: '登陆成功',
+                username: user.username,  
+            };
+            res.send(data);
+
+        }catch(er){
+            res.send({
+                status: 0,
+                type: 'SAVE_USER_FAILED',
+                message: '登陆失败',
+            });
+        }
     }
 
     //对密码加密
@@ -107,7 +104,7 @@ class UserController {
     //md5加密
     Md5(password){
         const md5 = crypto.createHash('md5');
-        return md5.update(password).digest('base64');
+        return md5.update(password.toString()).digest('base64');
     }
 }
 
